@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<title>Document</title>
+	<style>
+		canvas{
+			border: 1px solid red;
+		}
+	</style>
+</head>
+<body>
+	<!-- <canvas id="cvs" width="800px" height="600px"></canvas> -->
+	<canvas id="cvs"></canvas>
+</body>
+<script>
+	//加载所有图片的函数：imgObj是存放图片的对象，fn是回调函数
+	function LoadImage(imgObj,fn){
+		//用来存放加载完的图片
+		var imgobj={};
+		//用来动态生成图片
+		var tempImg;
+		//记录要加载的数量
+		// console.log(imgObj.length);  输出结果是undefined
+		var imgLength=0;
+		//记录已经加载完毕的数量
+		var loaded=0;
+		for(var key in imgObj){
+			imgLength++;
+			//动态创建一个image
+			tempImg=new Image();
+			//所有图片要监听的onload事件
+			tempImg.onload=function(){
+				loaded++;
+				if(loaded>=imgLength){
+					//把加载好的数据传入回调函数
+					fn(imgobj);
+				}
+			};
+			tempImg.src=imgObj[key];
+			imgobj[key]=tempImg;
+		}
+	}
+</script>
+<script>
+	//绘制背景
+	function Sky(ctx,img,speed){
+		this.ctx=ctx;
+		this.img=img;
+		this.width=img.width;
+		this.height=img.height;
+		this.speed=speed||10;
+		Sky.len++;
+		this.x=this.img.width*(Sky.len-1);
+		this.y=0;
+	}
+	//静态变量，每创建一个sky实例都会加1，用来确定x的位置
+	Sky.len = 0;
+	Sky.prototype={
+		construct:Sky,
+		draw:function(){
+			this.ctx.drawImage(this.img,this.x,this.y);
+		},
+		update:function(){
+			//让背景移动起来
+			this.x-=this.speed;
+			//如果x移出画布（整个移出，x一定小于负的宽度，令这个图片拼到最后面的图片的后面，给现在的x加上一共多少个图片的宽度即可）
+			this.x=this.x<=-this.width?this.x+this.width*Sky.len:this.x
+		}
+	}
+	//绘制小鸟widthFrame:图片一行有几个小鸟
+	function Bird(ctx,img,widthFrame,heightFrame,x,y){
+		this.ctx=ctx;
+		this.img=img;
+		this.widthFrame=widthFrame;
+		this.heightFrame=heightFrame;
+		this.x=x;
+		this.y=y;
+		this.width=this.img.width / this.widthFrame;
+		this.height=this.img.height / this.heightFrame;
+		//当前小鸟的帧数
+		this.currentFrame=0;
+		//小鸟下落的速度是speed,下落的加速度是speedPlus
+		this.speed=2;
+		this.speedPlus=0.2;
+	}
+	Bird.prototype={
+		construct:Sky,
+		//让小鸟根据speed调整旋转角度
+		draw:function(){
+			var baseRadian=Math.PI/180*10;
+			var rotateRadian=baseRadian*this.speed;
+			//保存小鸟还没开始旋转时的状态
+			this.ctx.save();
+			//1.先把坐标轴平移到小鸟的中心点
+			//2.根据speed旋转小鸟的度数，speed=1时，旋转90度，超过45度，就是45度
+			//3.绘制小鸟，将小鸟的x,y设置为宽度和高度的一半
+			 this.ctx.translate(this.x+this.width/2,this.y+this.height/2);
+			 
+			 if(rotateRadian>=Math.PI/180*45){
+			 	rotateRadian=Math.PI/180*45;
+			 }
+			 this.ctx.rotate(rotateRadian);
+			 // this.ctx.rotate(Math.PI/180*45);
+
+			this.ctx.drawImage(this.img,this.width*this.currentFrame,0,this.width,this.height,-this.width/2,-this.height/2,this.width,this.height);
+			// this.ctx.drawImage(this.img,this.width*this.currentFrame,0,this.width,this.height,this.x,this.y,this.width,this.height);
+			this.ctx.restore();
+		},
+		// 小鸟不需要往前跑,背景,land,pipe在动,小鸟往下落就可以
+		update:function(){
+			this.currentFrame++;
+			this.currentFrame=this.currentFrame>=this.widthFrame?0:this.currentFrame;
+			// this.currentFrame=++this.currentFrame>=this.widthFrame?0:this.currentFrame;
+			this.y+=this.speed;
+			this.speed+=this.speedPlus;
+		},
+		//监听点击事件，点击画布speed变成反方向，因此y再加speed就会往上跑，且越往上speed越小，就变成向上的减速运动
+		_bind:function(){
+			var that =this;
+			this.ctx.canvas.addEventListener("click",function(){
+				that.speed=-3;
+			});
+		}
+	}
+	//大地 和背景是类似的
+	function Land(ctx,img,speed){
+		this.ctx=ctx;
+		this.img=img;
+		this.speed=speed||2;
+		this.height=this.img.height;
+		this.y=this.ctx.canvas.height-this.img.height;
+		Land.len++;
+		this.x=this.img.width*(Land.len-1);
+	}
+	Land.len=0;
+	Land.prototype={
+		construct:Land,
+		draw:function(){
+			this.ctx.drawImage(this.img,this.x,this.y);
+		},
+		update:function(){
+			this.x-=this.speed;
+			this.x=this.x<=-this.img.width?this.x+this.img.width*Land.len:this.x;
+		}
+	}
+	//管道 两张图片，上下管道，space表示中间的间隙，land的高度
+	function Pipe(ctx,img1,img2,space,speed,landHeight){
+		this.ctx=ctx;
+		this.img1=img1;
+		this.img2=img2;
+		this.space=space;
+		this.speed=speed||2;
+		this.landHeight=landHeight;
+		this.width=this.img2.width;
+		this.height=this.img2.height;
+		this.y1=0;
+		this.y2=0;
+		this.height2=this.img2.height;
+		this.minHeight=100;
+		Pipe.len++;
+		// 中间隔3个管子，再加上本身宽度一共4个
+		this.x=500+this.width*4*(Pipe.len-1);
+		//init在创建实例的时候调用一次，不是在setinterval中调用，否则y值会一直变化
+		this.init();
+	}
+	Pipe.len=0;
+	Pipe.prototype={
+		construct:Pipe,
+		init:function(){
+			var maxHeight=this.ctx.canvas.height-this.minHeight-this.landHeight-this.space;
+			var randomHeight=Math.random()*maxHeight;
+			if(randomHeight<this.minHeight){
+				randomHeight=this.minHeight;
+			}
+			this.y1=randomHeight-this.img1.height;
+			this.y2=randomHeight+this.space;
+			//注意不能直接drawImage(this.img2,this.x,this.y2);
+			//因为下面管子的下半部分应该被截取了，但是它现在是全部显示的
+			//得做计算求出现在需要剩余的下管子的高度
+			this.height2=this.ctx.canvas.height-this.y2-this.landHeight;
+		},
+		draw:function(){
+			this.ctx.drawImage(this.img1,this.x,this.y1);
+			this.ctx.drawImage(this.img2,this.x,this.y2,this.width,this.height2);
+			this.drawPath();
+		},
+		update:function(){
+			this.x-=this.speed;
+			if(this.x<=-this.width){
+				//从画布中出去的管子再重新初始化
+				this.init();
+				this.x+=this.width*4*Pipe.len;
+			}
+		},
+		//画管道的路径
+		drawPath:function(){
+			this.ctx.rect(this.x,this.y1,this.width,this.height);
+			this.ctx.rect(this.x,this.y2,this.width,this.height2);
+			// this.ctx.stroke();
+		}
+	}
+</script>
+<script>
+	var cvs =document.getElementById('cvs');
+	var ctx =cvs.getContext("2d");
+		LoadImage({
+		bird:"image/birds.png",
+		sky:"image/sky.png",
+		pipe1:"image/pipe2.png",
+		pipe2:"image/pipe1.png",
+		land:"image/land.png"
+	},function(imgObj){
+		//这两行根据背景的高宽设置画布的高宽应该写在最上面，如果写在下面就会先创建land实例，此时画布的高宽还没有设置，是默认，计算的land的y就不对
+		cvs.width=imgObj.sky.width;
+		cvs.height=imgObj.sky.height;
+		//背景需要两张图片才能动起来没有空隙
+		var sky=new Sky(ctx,imgObj.sky,10);
+		var sky1=new Sky(ctx,imgObj.sky,10);
+		var bird=new Bird(ctx,imgObj.bird,3,1,10,10);
+		var land=new Land(ctx,imgObj.land,10);
+		var land1=new Land(ctx,imgObj.land,10);
+		var land2=new Land(ctx,imgObj.land,10);
+		//3个land已经可以填满画布的宽，但是动起来时，第一张还没有完全出去，最右边已经出来了，就会导致右边空出来一块一会儿才被补上。需要4张图片
+		var land3=new Land(ctx,imgObj.land,10);
+		var pipe=new Pipe(ctx,imgObj.pipe1,imgObj.pipe2,100,5,land.height);
+		var pipe1=new Pipe(ctx,imgObj.pipe1,imgObj.pipe2,100,5,land.height);
+		var pipe2=new Pipe(ctx,imgObj.pipe1,imgObj.pipe2,100,5,land.height);
+		var pipe3=new Pipe(ctx,imgObj.pipe1,imgObj.pipe2,100,5,land.height);
+		var timer=setInterval(function(){
+			//定时器一开始就进行判断，小鸟是否碰壁，如果碰壁就清除定时器
+			//小鸟的中心点
+			var birdCoreX=bird.x+bird.width/2;
+			var birdCoreY=bird.y+bird.height/2;
+			//如果小鸟的中心点在路径内，或者超过画布最上面，或者落地，都清除定时器
+			//isPointInPath(x,y)方法，判断点(x,y)在不在路径中
+			// if(ctx.isPointInPath(bordCoreX,bordCoreY)||bordCoreY<0||bordCoreY>(ctx.canvas.height-land.height)){
+			if(ctx.isPointInPath(birdCoreX,birdCoreY)||birdCoreY<0||birdCoreY>(land.y)){
+				clearInterval(timer);
+				ctx.fillStyle="rgba(100,100,100,0.8)";
+				ctx.fillRect(0,0,ctx.canvas.width,ctx.canvas.height);
+				//不显示字！因为出现字以后跳出判断，接着sky.draw()，把字给覆盖了
+				ctx.textAlign="center";
+				ctx.textBaseline="middle";
+				ctx.fillStyle="red";
+				ctx.font="900 40px 微软雅黑";
+				ctx.fillText("GAME OVER!!",ctx.canvas.width/2,ctx.canvas.height/2);
+				// return的作用是跳出这个判断，不执行下面的代码，不会覆盖掉文字
+				return;
+			}
+			sky.draw();
+			sky.update();
+			sky1.draw();
+			sky1.update();
+			bird.draw();
+			bird.update();
+			bird._bind();
+			land.draw();
+			land1.draw();
+			land2.draw();
+			land3.draw();
+			land.update();
+			land1.update();
+			land2.update();
+			land3.update();
+			//要在这几个管道一起的前面清除路径，如果每次画draw就会只有一个路径，所以要一起清，不清的话每次update就会产生新的路径。
+			ctx.beginPath();
+			pipe.draw();
+			pipe.update();
+			pipe1.draw();
+			pipe1.update();
+			pipe2.draw();
+			pipe2.update();
+			pipe3.draw();
+			pipe3.update();
+		},50);
+		
+	});
+</script>
+</html>
